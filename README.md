@@ -79,7 +79,7 @@ Maps conferences to categories: CVPR, NeurIPS, ICML, ICLR, ACL, EMNLP, AAAI, CHI
 
 ## How it works
 
-1. Pre-built index: 928K papers embedded with SPECTER2 (same model as Semantic Scholar), stored in LanceDB
+1. Pre-built index: 928K papers embedded with SPECTER2, stored in LanceDB
 2. At query time: embed query with SPECTER2, hybrid retrieval (vector + BM25), graph-based re-ranking via Personalized PageRank
 3. Index auto-downloads from [HuggingFace](https://huggingface.co/datasets/anonymousatom/arxiv-search-index) on first use (~4GB)
 
