@@ -50,23 +50,22 @@ class SearchEngine:
         sort_by: str | None = None,
         min_citations: int | None = None,
     ) -> SearchResult:
-        """Execute a full search pipeline.
+        """Execute the full search pipeline: embed → retrieve → rerank → enrich.
 
         Args:
             query: Keyword search query.
-            max_results: Number of results to return.
-            categories: Filter to these ArXiv categories.
-            conference: Filter to categories for this conference.
-            year: Filter to papers from this year.
-            date_from: Filter papers published after this date.
-            date_to: Filter papers published before this date.
-            context_paper_id: ArXiv ID of paper being reviewed (for re-ranking).
+            max_results: Number of papers to return.
+            categories: ArXiv categories to filter (e.g. ``["cs.CV"]``).
+            conference: Conference name (e.g. ``"CVPR"``), maps to categories.
+            year: Filter to this publication year.
+            date_from: Published after this date (YYYY-MM-DD).
+            date_to: Published before this date (YYYY-MM-DD).
+            context_paper_id: ArXiv ID to bias results toward.
             context_title: Title of context paper (alternative to ID).
             context_abstract: Abstract of context paper.
-            rerank: Override default re-ranking setting.
-            sort_by: Sort order — "relevance" (default), "citations", or "date".
-                     "citations" fetches citation counts from S2 and re-sorts.
-            min_citations: Filter out papers below this citation count (uses S2 API).
+            rerank: Override default PageRank re-ranking.
+            sort_by: ``"relevance"`` | ``"citations"`` | ``"date"`` | ``"importance"``.
+            min_citations: Minimum citation count filter (uses S2 API).
 
         Returns:
             SearchResult with ranked papers.
@@ -148,8 +147,8 @@ class SearchEngine:
         else:
             papers = [p for p, _ in candidates[:max_results]]
 
-        # Post-search: sort by citations or filter by min_citations
-        if sort_by == "citations" or min_citations is not None:
+        # Post-search: sort by citations/importance or filter by min_citations
+        if sort_by in ("citations", "importance") or min_citations is not None:
             papers = _enrich_and_filter(
                 papers, sort_by=sort_by, min_citations=min_citations
             )
@@ -269,15 +268,18 @@ class SearchEngine:
         context_paper_id: str | None = None,
         context_title: str | None = None,
         context_abstract: str | None = None,
+        sort_by: str | None = None,
+        min_citations: int | None = None,
     ) -> SearchResult:
-        """Run multiple keyword queries and merge results.
-
-        Deduplicates papers across queries and keeps the highest score.
+        """Run multiple queries, merge and deduplicate results.
 
         Args:
             queries: List of keyword queries.
-            max_results: Results per query (all unique results returned after merge).
-            (other args same as search)
+            max_results: Results per query (all unique papers returned after merge).
+            sort_by: ``"relevance"`` | ``"citations"`` | ``"date"`` | ``"importance"``.
+            min_citations: Minimum citation count filter (uses S2 API).
+
+        Other arguments are the same as :meth:`search`.
 
         Returns:
             Merged SearchResult.
@@ -308,15 +310,18 @@ class SearchEngine:
                 elif (paper.similarity_score or 0) > (existing.similarity_score or 0):
                     seen[paper.arxiv_id] = paper
 
-        # Sort by similarity score — return ALL unique results (max_results is per-query)
-        merged = sorted(
-            seen.values(),
-            key=lambda p: p.similarity_score or 0,
-            reverse=True,
-        )
+        papers = sorted(seen.values(), key=lambda p: p.similarity_score or 0, reverse=True)
+
+        # Post-merge: enrich and sort/filter
+        if sort_by in ("citations", "importance") or min_citations is not None:
+            papers = _enrich_and_filter(
+                papers, sort_by=sort_by, min_citations=min_citations
+            )
+        elif sort_by == "date":
+            papers.sort(key=lambda p: p.published, reverse=True)
 
         return SearchResult(
-            papers=merged,
+            papers=papers,
             query=" | ".join(queries),
             total_candidates=total_candidates,
             search_time_ms=_elapsed_ms(t_start),
@@ -392,20 +397,22 @@ def _enrich_and_filter(
     sort_by: str | None = None,
     min_citations: int | None = None,
 ) -> list[Paper]:
-    """Enrich papers with S2 citation data, then optionally sort/filter."""
+    """Enrich via S2 API, then sort/filter by citations or importance."""
     from arxiv_search_kit.enrichment import enrich_papers
 
-    # Only fetch citation counts (fast, minimal fields)
-    enrich_papers(papers, fields=["citationCount"])
+    if sort_by == "importance":
+        enrich_papers(papers, fields=["citationCount", "influentialCitationCount", "venue"])
+    else:
+        enrich_papers(papers, fields=["citationCount"])
 
     if min_citations is not None:
-        papers = [
-            p for p in papers
-            if p.citation_count is not None and p.citation_count >= min_citations
-        ]
+        papers = [p for p in papers if (p.citation_count or 0) >= min_citations]
 
     if sort_by == "citations":
         papers.sort(key=lambda p: p.citation_count or 0, reverse=True)
+    elif sort_by == "importance":
+        from arxiv_search_kit.search.importance import rerank_by_importance
+        papers = rerank_by_importance(papers)
 
     return papers
 

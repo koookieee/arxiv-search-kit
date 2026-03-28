@@ -55,6 +55,8 @@ class Paper:
     influential_citation_count: int | None = None
     references: list[str] | None = None
     tldr: str | None = None
+    venue: str | None = None
+    publication_types: list[str] | None = None
 
     # Internal: cached embedding from search results (not serialized)
     _cached_vector: np.ndarray | None = field(default=None, repr=False, compare=False)
@@ -100,8 +102,11 @@ class Paper:
             "abs_url": self.abs_url,
             "similarity_score": self.similarity_score,
             "citation_count": self.citation_count,
+            "influential_citation_count": self.influential_citation_count,
             "references": self.references,
             "tldr": self.tldr,
+            "venue": self.venue,
+            "publication_types": self.publication_types,
         }
 
     def __repr__(self) -> str:

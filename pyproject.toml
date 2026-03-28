@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arxiv-search-kit"
-version = "0.1.1"
+version = "0.1.2"
 description = "Blazing fast ArXiv paper search — 928K papers in 40ms"
 readme = "README.md"
 license = "MIT"
@@ -32,6 +32,7 @@ dependencies = [
     "numpy>=1.24",
     "httpx>=0.24",
     "networkx>=3.0",
+    "scipy>=1.11",
     "pandas>=2.0",
     "pyarrow>=14.0",
     "huggingface_hub>=0.20",
@@ -48,6 +49,7 @@ cpu = [
     "transformers>=4.36",
     "adapters>=1.0",
 ]
+# Index building (includes ML + keyword extraction)
 index = [
     "torch>=2.0",
     "transformers>=4.36",
