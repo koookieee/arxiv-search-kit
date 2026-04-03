@@ -187,44 +187,15 @@ def _clean_tex(tex: str) -> str:
     return tex.strip()
 
 
-def summarize_paper(
-    paper: Paper | str,
-    api_key: str | None = None,
-    model: str = "gemini-3-flash-preview",
-    timeout: float = 120.0,
+def _summarize_one(
+    arxiv_id: str,
+    api_key: str,
+    model: str,
+    timeout: float,
 ) -> str:
-    """Download a paper's LaTeX source and summarize it using Google Gemini.
-
-    Args:
-        paper: Paper object or ArXiv ID string.
-        api_key: Google AI API key. Falls back to ``GEMINI_API_KEY`` env var.
-        model: Gemini model to use.
-        timeout: HTTP timeout for source download.
-
-    Returns:
-        A comprehensive summary string.
-
-    Raises:
-        SummarizationError: If summarization fails at any step.
-        DownloadError: If source download fails.
-    """
-    import os
-
-    try:
-        from google import genai
-        from google.genai import types
-    except ImportError:
-        raise SummarizationError(
-            "google-genai is required for summarization. "
-            "Install it with: pip install arxiv-search-kit[summarize]"
-        )
-
-    arxiv_id = paper.arxiv_id if isinstance(paper, Paper) else paper
-    api_key = api_key or os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise SummarizationError(
-            "Gemini API key required. Pass api_key= or set GEMINI_API_KEY env var."
-        )
+    """Summarize a single paper (internal). Assumes imports and api_key are validated."""
+    from google import genai
+    from google.genai import types
 
     # 1. Download source
     logger.info("Downloading source for %s ...", arxiv_id)
@@ -264,18 +235,92 @@ def summarize_paper(
     if not summary:
         raise SummarizationError("Gemini returned an empty response")
 
-    logger.info("Summary generated (%d chars)", len(summary))
+    logger.info("Summary generated for %s (%d chars)", arxiv_id, len(summary))
     return summary
 
 
-async def async_summarize_paper(
-    paper: Paper | str,
+def summarize_paper(
+    paper: Paper | str | list[Paper] | list[str],
     api_key: str | None = None,
     model: str = "gemini-3-flash-preview",
+    max_concurrent: int = 5,
     timeout: float = 120.0,
-) -> str:
+) -> str | dict[str, str]:
+    """Download paper(s) LaTeX source and summarize using Google Gemini.
+
+    Accepts a single paper or a list of papers. When given a list,
+    papers are summarized in parallel using a thread pool.
+
+    Args:
+        paper: Paper object, ArXiv ID string, or a list of either.
+        api_key: Google AI API key. Falls back to ``GEMINI_API_KEY`` env var.
+        model: Gemini model to use.
+        max_concurrent: Max parallel requests (only used for multiple papers).
+        timeout: HTTP timeout for source download per paper.
+
+    Returns:
+        A summary string for a single paper, or a dict mapping
+        ArXiv ID to summary string for multiple papers.
+        Failed papers in a batch are logged and omitted from the dict.
+
+    Raises:
+        SummarizationError: If summarization fails (single paper mode).
+        DownloadError: If source download fails (single paper mode).
+    """
+    import os
+
+    try:
+        from google import genai  # noqa: F401
+    except ImportError:
+        raise SummarizationError(
+            "google-genai is required for summarization. "
+            "Install it with: pip install arxiv-search-kit[summarize]"
+        )
+
+    api_key = api_key or os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise SummarizationError(
+            "Gemini API key required. Pass api_key= or set GEMINI_API_KEY env var."
+        )
+
+    # Single paper
+    if not isinstance(paper, list):
+        arxiv_id = paper.arxiv_id if isinstance(paper, Paper) else paper
+        return _summarize_one(arxiv_id, api_key, model, timeout)
+
+    # Multiple papers — parallel via thread pool
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    papers = paper
+    results: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=max_concurrent) as pool:
+        futures = {}
+        for p in papers:
+            aid = p.arxiv_id if isinstance(p, Paper) else p
+            futures[pool.submit(_summarize_one, aid, api_key, model, timeout)] = aid
+
+        for future in as_completed(futures):
+            aid = futures[future]
+            try:
+                results[aid] = future.result()
+            except Exception as e:
+                logger.warning("Failed to summarize %s: %s", aid, e)
+
+    return results
+
+
+async def async_summarize_paper(
+    paper: Paper | str | list[Paper] | list[str],
+    api_key: str | None = None,
+    model: str = "gemini-3-flash-preview",
+    max_concurrent: int = 5,
+    timeout: float = 120.0,
+) -> str | dict[str, str]:
     """Async variant of :func:`summarize_paper`."""
     import asyncio
     return await asyncio.get_running_loop().run_in_executor(
-        None, lambda: summarize_paper(paper, api_key=api_key, model=model, timeout=timeout)
+        None, lambda: summarize_paper(
+            paper, api_key=api_key, model=model,
+            max_concurrent=max_concurrent, timeout=timeout,
+        )
     )

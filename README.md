@@ -274,6 +274,19 @@ summary = client.summarize_paper("1706.03762")
 
 The summary covers: title & authors, problem statement, key contributions, related work, methodology (with equations), experimental setup, all benchmark results, ablation studies, limitations, and conclusion.
 
+### Batch summarization
+
+Pass a list to summarize multiple papers in parallel:
+
+```python
+results = client.search("vision transformers", max_results=5)
+summaries = client.summarize_paper(results.papers, api_key="your-gemini-key")
+# returns {"2401.12345": "summary...", "2312.67890": "summary...", ...}
+
+# control parallelism (default: 5 concurrent)
+summaries = client.summarize_paper(results.papers, max_concurrent=3)
+```
+
 You can also specify a different Gemini model:
 
 ```python

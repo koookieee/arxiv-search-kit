@@ -256,11 +256,12 @@ class ArxivClient:
 
     def summarize_paper(
         self,
-        paper: Paper | str,
+        paper: Paper | str | list[Paper] | list[str],
         api_key: str | None = None,
         model: str = "gemini-3-flash-preview",
-    ) -> str:
-        """Download a paper's LaTeX source and summarize it using Google Gemini.
+        max_concurrent: int = 5,
+    ) -> str | dict[str, str]:
+        """Download paper(s) LaTeX source and summarize using Google Gemini.
 
         Downloads the source from ArXiv, extracts the primary .tex file,
         trims content after the conclusion, and sends it to Gemini for
@@ -268,15 +269,17 @@ class ArxivClient:
         results, and more.
 
         Args:
-            paper: Paper object or ArXiv ID string.
+            paper: Paper object, ArXiv ID string, or a list of either.
             api_key: Google AI API key. Falls back to ``GEMINI_API_KEY`` env var.
             model: Gemini model to use.
+            max_concurrent: Max parallel requests (only for multiple papers).
 
         Returns:
-            A comprehensive summary string.
+            A summary string for a single paper, or a dict mapping
+            ArXiv ID to summary string for multiple papers.
         """
         from arxiv_search_kit.summarizer import summarize_paper
-        return summarize_paper(paper, api_key=api_key, model=model)
+        return summarize_paper(paper, api_key=api_key, model=model, max_concurrent=max_concurrent)
 
     # ------------------------------------------------------------------
     # Async variants
@@ -307,10 +310,13 @@ class ArxivClient:
 
     async def async_summarize_paper(
         self,
-        paper: Paper | str,
+        paper: Paper | str | list[Paper] | list[str],
         api_key: str | None = None,
         model: str = "gemini-3-flash-preview",
-    ) -> str:
+        max_concurrent: int = 5,
+    ) -> str | dict[str, str]:
         """Async variant of :meth:`summarize_paper`."""
         from arxiv_search_kit.summarizer import async_summarize_paper
-        return await async_summarize_paper(paper, api_key=api_key, model=model)
+        return await async_summarize_paper(
+            paper, api_key=api_key, model=model, max_concurrent=max_concurrent,
+        )
