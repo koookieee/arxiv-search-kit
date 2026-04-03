@@ -251,6 +251,35 @@ paths = client.download_papers(results.papers, output_dir="./sources", format="s
 
 Downloads are streamed to disk (no full file in memory). Failed downloads are skipped with a warning.
 
+## Paper Summarization
+
+Summarize any paper using Google Gemini — downloads the LaTeX source from ArXiv, extracts the primary `.tex` file, trims after the conclusion, and produces a comprehensive LLM-generated summary covering contributions, methodology, results, ablations, and more.
+
+```bash
+pip install arxiv-search-kit[summarize]
+```
+
+```python
+# by ArXiv ID
+summary = client.summarize_paper("1706.03762", api_key="your-gemini-key")
+
+# from search results
+results = client.search("vision transformers", max_results=1)
+summary = client.summarize_paper(results[0], api_key="your-gemini-key")
+
+# or set the env var instead of passing api_key every time
+# export GEMINI_API_KEY=your-gemini-key
+summary = client.summarize_paper("1706.03762")
+```
+
+The summary covers: title & authors, problem statement, key contributions, related work, methodology (with equations), experimental setup, all benchmark results, ablation studies, limitations, and conclusion.
+
+You can also specify a different Gemini model:
+
+```python
+summary = client.summarize_paper("1706.03762", model="gemini-3-flash-preview")
+```
+
 ## Async Support
 
 All main methods have async variants:
@@ -260,6 +289,7 @@ results = await client.async_search("transformers", max_results=10)
 results = await client.async_batch_search(queries=[...], sort_by="importance")
 related = await client.async_find_related("1706.03762")
 await client.async_enrich(results)
+summary = await client.async_summarize_paper("1706.03762")
 ```
 
 ## Venue Prestige Tiers
