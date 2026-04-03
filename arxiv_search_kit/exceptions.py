@@ -31,3 +31,7 @@ class DownloadError(OpenArxivError):
 
 class RateLimitError(OpenArxivError):
     """Raised when an API rate limit is hit."""
+
+
+class SummarizationError(OpenArxivError):
+    """Raised when paper summarization fails."""

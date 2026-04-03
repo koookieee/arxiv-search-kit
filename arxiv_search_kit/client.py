@@ -251,6 +251,34 @@ class ArxivClient:
         return download_papers(papers, output_dir=output_dir, format=format)
 
     # ------------------------------------------------------------------
+    # Summarization
+    # ------------------------------------------------------------------
+
+    def summarize_paper(
+        self,
+        paper: Paper | str,
+        api_key: str | None = None,
+        model: str = "gemini-3-flash-preview",
+    ) -> str:
+        """Download a paper's LaTeX source and summarize it using Google Gemini.
+
+        Downloads the source from ArXiv, extracts the primary .tex file,
+        trims content after the conclusion, and sends it to Gemini for
+        a comprehensive summary covering contributions, methodology,
+        results, and more.
+
+        Args:
+            paper: Paper object or ArXiv ID string.
+            api_key: Google AI API key. Falls back to ``GEMINI_API_KEY`` env var.
+            model: Gemini model to use.
+
+        Returns:
+            A comprehensive summary string.
+        """
+        from arxiv_search_kit.summarizer import summarize_paper
+        return summarize_paper(paper, api_key=api_key, model=model)
+
+    # ------------------------------------------------------------------
     # Async variants
     # ------------------------------------------------------------------
 
@@ -276,3 +304,13 @@ class ArxivClient:
         return await async_enrich_papers(
             list(papers) if not isinstance(papers, list) else papers, fields=fields,
         )
+
+    async def async_summarize_paper(
+        self,
+        paper: Paper | str,
+        api_key: str | None = None,
+        model: str = "gemini-3-flash-preview",
+    ) -> str:
+        """Async variant of :meth:`summarize_paper`."""
+        from arxiv_search_kit.summarizer import async_summarize_paper
+        return await async_summarize_paper(paper, api_key=api_key, model=model)
