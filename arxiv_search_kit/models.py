@@ -114,6 +114,27 @@ class Paper:
         return f"Paper('{self.arxiv_id}', '{title}')"
 
 
+# Fields returned in default vs extra mode
+_DEFAULT_PAPER_FIELDS = {"arxiv_id", "title", "abstract", "year", "citation_count"}
+_EXTRA_PAPER_FIELDS = {
+    "authors", "categories", "primary_category", "published", "updated",
+    "doi", "journal_ref", "comment", "pdf_url", "abs_url",
+    "similarity_score", "influential_citation_count", "references",
+    "tldr", "venue", "publication_types",
+}
+
+
+def _strip_paper(paper: "Paper") -> dict:
+    """Return only the default fields from a Paper as a dict."""
+    return {
+        "arxiv_id": paper.arxiv_id,
+        "title": paper.title,
+        "abstract": paper.abstract,
+        "year": paper.year,
+        "citation_count": paper.citation_count,
+    }
+
+
 @dataclass
 class SearchResult:
     """Container for search results with metadata about the search."""
@@ -122,6 +143,7 @@ class SearchResult:
     query: str
     total_candidates: int
     search_time_ms: float
+    details: str = "default"  # "default" or "extra"
 
     def __len__(self) -> int:
         return len(self.papers)
@@ -132,5 +154,15 @@ class SearchResult:
     def __getitem__(self, idx: int) -> Paper:
         return self.papers[idx]
 
+    def to_dicts(self) -> list[dict]:
+        """Serialize papers according to the details level.
+
+        ``details="default"`` → arxiv_id, title, abstract, year, citation_count.
+        ``details="extra"``   → all Paper fields.
+        """
+        if self.details == "extra":
+            return [p.to_dict() for p in self.papers]
+        return [_strip_paper(p) for p in self.papers]
+
     def __repr__(self) -> str:
-        return f"SearchResult(query='{self.query[:40]}', papers={len(self.papers)}, time={self.search_time_ms:.0f}ms)"
+        return f"SearchResult(query='{self.query[:40]}', papers={len(self.papers)}, time={self.search_time_ms:.0f}ms, details='{self.details}')"

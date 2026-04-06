@@ -53,6 +53,32 @@ for paper in results:
     print(paper.title, paper.arxiv_id)
 ```
 
+## Default vs Extra Fields
+
+By default, search results include only the essential fields:
+**arxiv_id, title, abstract, year, citation_count** (citation_count populated only when using `sort_by="importance"` or `sort_by="citations"`).
+
+Pass `details="extra"` to get all fields.
+
+```python
+# default — only core fields
+results = client.search("transformers")
+results.to_dicts()
+# [{"arxiv_id": "...", "title": "...", "abstract": "...", "year": 2024, "citation_count": None}, ...]
+
+# extra — all fields (authors, categories, doi, venue, tldr, etc.)
+results = client.search("transformers", details="extra")
+results.to_dicts()
+# [{"arxiv_id": "...", "title": "...", "authors": [...], "categories": [...], ...}, ...]
+```
+
+Works the same for `batch_search` and `find_related`:
+
+```python
+results = client.batch_search(["BERT", "GPT"], sort_by="importance", details="extra")
+related  = client.find_related("1706.03762", details="extra")
+```
+
 ## Search
 
 ### Keyword Search

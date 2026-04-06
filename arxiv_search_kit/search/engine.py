@@ -49,6 +49,7 @@ class SearchEngine:
         rerank: bool | None = None,
         sort_by: str | None = None,
         min_citations: int | None = None,
+        details: str = "default",
     ) -> SearchResult:
         """Execute the full search pipeline: embed → retrieve → rerank → enrich.
 
@@ -160,6 +161,7 @@ class SearchEngine:
             query=query,
             total_candidates=len(candidates),
             search_time_ms=_elapsed_ms(t_start),
+            details=details,
         )
 
     def search_title(
@@ -193,6 +195,7 @@ class SearchEngine:
         max_results: int = 20,
         categories: list[str] | None = None,
         rerank: bool | None = None,
+        details: str = "default",
     ) -> SearchResult:
         """Find papers most related to a given paper.
 
@@ -254,6 +257,7 @@ class SearchEngine:
             query=f"related:{arxiv_id}",
             total_candidates=len(candidates),
             search_time_ms=_elapsed_ms(t_start),
+            details=details,
         )
 
     def batch_search(
@@ -270,6 +274,7 @@ class SearchEngine:
         context_abstract: str | None = None,
         sort_by: str | None = None,
         min_citations: int | None = None,
+        details: str = "default",
     ) -> SearchResult:
         """Run multiple queries, merge and deduplicate results.
 
@@ -325,6 +330,7 @@ class SearchEngine:
             query=" | ".join(queries),
             total_candidates=total_candidates,
             search_time_ms=_elapsed_ms(t_start),
+            details=details,
         )
 
     def _rerank_candidates(

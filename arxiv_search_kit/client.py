@@ -79,6 +79,7 @@ class ArxivClient:
         rerank: bool | None = None,
         sort_by: str | None = None,
         min_citations: int | None = None,
+        details: str = "default",
     ) -> SearchResult:
         """Search papers by keywords.
 
@@ -96,13 +97,15 @@ class ArxivClient:
             rerank: Override default PageRank re-ranking.
             sort_by: ``"relevance"`` | ``"citations"`` | ``"date"`` | ``"importance"``.
             min_citations: Minimum citation count filter (uses S2 API).
+            details: ``"default"`` returns arxiv_id, title, abstract, year, citation_count.
+                ``"extra"`` returns all fields.
         """
         return self._engine.search(
             query=query, max_results=max_results, categories=categories,
             conference=conference, year=year, date_from=date_from, date_to=date_to,
             context_paper_id=context_paper_id, context_title=context_title,
             context_abstract=context_abstract, rerank=rerank,
-            sort_by=sort_by, min_citations=min_citations,
+            sort_by=sort_by, min_citations=min_citations, details=details,
         )
 
     def batch_search(
@@ -119,6 +122,7 @@ class ArxivClient:
         context_abstract: str | None = None,
         sort_by: str | None = None,
         min_citations: int | None = None,
+        details: str = "default",
     ) -> SearchResult:
         """Run multiple queries, merge and deduplicate results.
 
@@ -127,6 +131,8 @@ class ArxivClient:
             max_results: Results per query (all unique papers returned after merge).
             sort_by: ``"relevance"`` | ``"citations"`` | ``"date"`` | ``"importance"``.
             min_citations: Minimum citation count filter (uses S2 API).
+            details: ``"default"`` returns arxiv_id, title, abstract, year, citation_count.
+                ``"extra"`` returns all fields.
 
         Other arguments are the same as :meth:`search`.
         """
@@ -135,7 +141,7 @@ class ArxivClient:
             conference=conference, year=year, date_from=date_from, date_to=date_to,
             context_paper_id=context_paper_id, context_title=context_title,
             context_abstract=context_abstract, sort_by=sort_by,
-            min_citations=min_citations,
+            min_citations=min_citations, details=details,
         )
 
     def find_related(
@@ -144,6 +150,7 @@ class ArxivClient:
         max_results: int = 20,
         categories: list[str] | None = None,
         rerank: bool | None = None,
+        details: str = "default",
     ) -> SearchResult:
         """Find papers related to a given paper via SPECTER2 embedding similarity.
 
@@ -152,10 +159,12 @@ class ArxivClient:
             max_results: Number of results.
             categories: Filter to these categories.
             rerank: Override default re-ranking.
+            details: ``"default"`` returns arxiv_id, title, abstract, year, citation_count.
+                ``"extra"`` returns all fields.
         """
         return self._engine.find_related(
             arxiv_id=arxiv_id, max_results=max_results,
-            categories=categories, rerank=rerank,
+            categories=categories, rerank=rerank, details=details,
         )
 
     # ------------------------------------------------------------------
