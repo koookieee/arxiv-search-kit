@@ -187,6 +187,122 @@ def _clean_tex(tex: str) -> str:
     return tex.strip()
 
 
+QA_SYSTEM_PROMPT = """\
+You are an expert academic researcher. You will be given the LaTeX source of a research paper \
+and a question about it. Answer the question accurately and in detail, grounding every claim \
+in the paper's content. If the paper does not contain enough information to answer, say so clearly."""
+
+QA_USER_PROMPT = """\
+Answer the following question based solely on the content of the paper below. \
+Be specific and thorough — cite sections, equations, tables, or numbers from the paper where relevant. \
+Do not speculate beyond what the paper says.
+
+Question: {question}
+
+Paper LaTeX source:
+
+{tex_content}
+"""
+
+
+def ask_paper(
+    paper: Paper | str,
+    question: str,
+    api_key: str | None = None,
+    model: str = "gemini-3-flash-preview",
+    timeout: float = 120.0,
+) -> str:
+    """Answer a question about a paper using its LaTeX source and Google Gemini.
+
+    Downloads the paper's LaTeX source from ArXiv, extracts the primary .tex
+    file, trims after the conclusion, and asks Gemini to answer the question
+    grounded in the paper's content.
+
+    Args:
+        paper: Paper object or ArXiv ID string.
+        question: The question to answer about the paper.
+        api_key: Google AI API key. Falls back to ``GEMINI_API_KEY`` env var.
+        model: Gemini model to use.
+        timeout: HTTP timeout for source download.
+
+    Returns:
+        Answer string grounded in the paper's content.
+
+    Raises:
+        SummarizationError: If the API call fails.
+        DownloadError: If source download fails.
+    """
+    import os
+
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        raise SummarizationError(
+            "google-genai is required for ask_paper. "
+            "Install it with: pip install arxiv-search-kit[summarize]"
+        )
+
+    arxiv_id = paper.arxiv_id if isinstance(paper, Paper) else paper
+    api_key = api_key or os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise SummarizationError(
+            "Gemini API key required. Pass api_key= or set GEMINI_API_KEY env var."
+        )
+
+    logger.info("Downloading source for %s ...", arxiv_id)
+    archive_bytes = _fetch_source(arxiv_id, timeout=timeout)
+    tex_content = _find_primary_tex(archive_bytes)
+    tex_content = _trim_after_conclusion(tex_content)
+    tex_content = _clean_tex(tex_content)
+
+    logger.info("Asking question about %s (%d chars tex)", arxiv_id, len(tex_content))
+
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=model,
+            contents=[
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part(text=QA_SYSTEM_PROMPT),
+                        types.Part(text=QA_USER_PROMPT.format(
+                            question=question,
+                            tex_content=tex_content,
+                        )),
+                    ],
+                ),
+            ],
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_level="medium"),
+            ),
+        )
+        answer = response.text
+    except Exception as e:
+        raise SummarizationError(f"Gemini API call failed: {e}") from e
+
+    if not answer:
+        raise SummarizationError("Gemini returned an empty response")
+
+    logger.info("Answer generated (%d chars)", len(answer))
+    return answer
+
+
+async def async_ask_paper(
+    paper: Paper | str,
+    question: str,
+    api_key: str | None = None,
+    model: str = "gemini-3-flash-preview",
+    timeout: float = 120.0,
+) -> str:
+    """Async variant of :func:`ask_paper`."""
+    import asyncio
+    return await asyncio.get_running_loop().run_in_executor(
+        None, lambda: ask_paper(paper, question, api_key=api_key, model=model, timeout=timeout)
+    )
+
+
 def _summarize_one(
     arxiv_id: str,
     api_key: str,

@@ -329,3 +329,38 @@ class ArxivClient:
         return await async_summarize_paper(
             paper, api_key=api_key, model=model, max_concurrent=max_concurrent,
         )
+
+    def ask_paper(
+        self,
+        paper: Paper | str,
+        question: str,
+        api_key: str | None = None,
+        model: str = "gemini-3-flash-preview",
+    ) -> str:
+        """Answer a question about a paper using its LaTeX source and Google Gemini.
+
+        Downloads the LaTeX source from ArXiv, extracts the primary .tex file,
+        and asks Gemini to answer the question grounded in the paper's content.
+
+        Args:
+            paper: Paper object or ArXiv ID string.
+            question: The question to answer about the paper.
+            api_key: Google AI API key. Falls back to ``GEMINI_API_KEY`` env var.
+            model: Gemini model to use.
+
+        Returns:
+            Answer string grounded in the paper's content.
+        """
+        from arxiv_search_kit.summarizer import ask_paper
+        return ask_paper(paper, question, api_key=api_key, model=model)
+
+    async def async_ask_paper(
+        self,
+        paper: Paper | str,
+        question: str,
+        api_key: str | None = None,
+        model: str = "gemini-3-flash-preview",
+    ) -> str:
+        """Async variant of :meth:`ask_paper`."""
+        from arxiv_search_kit.summarizer import async_ask_paper
+        return await async_ask_paper(paper, question, api_key=api_key, model=model)
