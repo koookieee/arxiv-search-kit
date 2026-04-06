@@ -319,6 +319,31 @@ You can also specify a different Gemini model:
 summary = client.summarize_paper("1706.03762", model="gemini-3-flash-preview")
 ```
 
+## Paper Q&A
+
+Ask any question about a paper and get an answer grounded in the paper's content. Uses the same LaTeX source pipeline as summarization.
+
+```python
+# by ArXiv ID
+answer = client.ask_paper("1706.03762", "What is the scaling factor in the attention mechanism and why is it used?")
+
+# from search results
+results = client.search("vision transformers", max_results=1)
+answer = client.ask_paper(results[0], "What datasets were used for evaluation?")
+
+# or set the env var instead of passing api_key every time
+# export GEMINI_API_KEY=your-gemini-key
+answer = client.ask_paper("1706.03762", "What are the key contributions of this paper?")
+```
+
+The answer is strictly grounded in the paper — Gemini cites specific sections, equations, and tables from the source. If the paper doesn't contain enough information to answer, it says so clearly.
+
+Requires the same `[summarize]` extra:
+
+```bash
+pip install arxiv-search-kit[summarize]
+```
+
 ## Async Support
 
 All main methods have async variants:
@@ -329,6 +354,7 @@ results = await client.async_batch_search(queries=[...], sort_by="importance")
 related = await client.async_find_related("1706.03762")
 await client.async_enrich(results)
 summary = await client.async_summarize_paper("1706.03762")
+answer  = await client.async_ask_paper("1706.03762", "What optimizer was used?")
 ```
 
 ## Venue Prestige Tiers
