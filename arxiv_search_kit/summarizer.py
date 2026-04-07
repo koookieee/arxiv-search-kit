@@ -19,56 +19,25 @@ logger = logging.getLogger(__name__)
 ARXIV_SOURCE_URL = "https://arxiv.org/e-print/{arxiv_id}"
 
 SYSTEM_PROMPT = """\
-You are an expert academic researcher who produces exhaustive, publication-quality paper summaries. \
-You will be given the LaTeX source of a research paper. Your job is to produce a summary so \
-detailed and thorough that a reader would not need to read the original paper to fully understand \
-every important aspect of the work. Do not be brief — be comprehensive. Extract every significant \
-detail from the source."""
+You are an expert academic researcher who writes concise, dense paper summaries. \
+You will be given the LaTeX source of a research paper. Your job is to distill it into \
+a tight summary of at most 2000 tokens — every sentence must earn its place. \
+Be specific and precise, not verbose."""
 
 USER_PROMPT = """\
-Produce an exhaustive, highly detailed summary of the following LaTeX paper source. \
-A reader of your summary should walk away understanding this paper as well as if they read it. \
-Your summary MUST cover ALL of the following sections in depth:
+Write a concise summary of the following paper in at most 2000 tokens. \
+Cover each section in 1–3 sentences max. Be dense and specific — include key numbers, \
+method names, and results but cut all padding and repetition.
 
-1. **Paper Title & Authors** — Full title, all authors, and their affiliations if available.
+1. **Title & Authors** — title, authors, affiliations (one line).
+2. **Problem** — what problem is solved and why it matters (2–3 sentences).
+3. **Contributions** — bullet list of novel claims, each in one precise sentence.
+4. **Method** — core approach, key equations or architecture components (3–5 sentences).
+5. **Experiments** — datasets, baselines, and the most important quantitative results with numbers.
+6. **Ablations** — key findings from ablation studies in 1–2 sentences.
+7. **Limitations & Conclusion** — main limitations and takeaways (2–3 sentences).
 
-2. **Problem Statement & Motivation** — What problem does this paper address? Why is it important? \
-What are the specific shortcomings of prior work that motivated this research? Include any concrete \
-examples or statistics the authors use to motivate their work.
-
-3. **Key Contributions** — List every novel contribution the paper claims, exactly as framed by \
-the authors. Be specific — not "improved performance" but exactly what was improved, by how much, \
-and on what.
-
-4. **Related Work** — Summarize how the paper positions itself relative to prior work. What are \
-the key prior approaches discussed, and how does this work differ from or build upon each?
-
-5. **Methodology / Proposed Approach** — Describe the full technical approach in detail. Include:
-   - Architecture/system design with all components
-   - Key equations, formulations, and mathematical definitions
-   - Training procedure, loss functions, optimization details
-   - Any novel techniques, tricks, or design choices and their justifications
-   - Hyperparameters and configuration details mentioned
-
-6. **Experimental Setup** — Describe all datasets, evaluation metrics, baselines/comparisons, \
-implementation details (hardware, training time, batch size, learning rate schedules, etc.).
-
-7. **Results & Benchmark Performance** — Report ALL quantitative results from every table and \
-figure discussed. Include specific numbers (accuracy, BLEU, F1, latency, FLOPs, etc.), which \
-model variants were tested, and how they compare to each baseline. Do not omit any result table.
-
-8. **Ablation Studies & Analysis** — Summarize every ablation experiment: what was varied, what \
-was the effect, and what conclusions were drawn. Include any qualitative analysis, visualizations, \
-or case studies the authors discuss.
-
-9. **Limitations & Failure Cases** — Note any limitations, failure modes, or weaknesses the authors \
-acknowledge. If they don't explicitly state limitations, note any that are apparent from the results.
-
-10. **Conclusion & Future Work** — The main takeaways, broader impact if discussed, and any \
-future research directions the authors propose.
-
-Be extremely thorough. Every specific number, every comparison, every design decision matters. \
-Use bullet points and sub-sections for clarity. Keep the language precise and technical.
+Stop when you have covered all sections. Do not pad or repeat.
 
 Here is the LaTeX source:
 
