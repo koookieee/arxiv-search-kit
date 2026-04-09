@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 
 from arxiv_search_kit.categories import get_categories_for_conference
-from arxiv_search_kit.index.embedder import Specter2Embedder
+from arxiv_search_kit.index.embedder import GeminiEmbedder, Specter2Embedder
 from arxiv_search_kit.index.store import IndexStore
 from arxiv_search_kit.models import Paper, SearchResult
 from arxiv_search_kit.search.query import expand_query_for_embedding
@@ -27,7 +28,7 @@ class SearchEngine:
     def __init__(
         self,
         store: IndexStore,
-        embedder: Specter2Embedder,
+        embedder: Specter2Embedder | GeminiEmbedder,
         rerank: bool = True,
     ):
         self._store = store
@@ -100,9 +101,12 @@ class SearchEngine:
                 context_title, context_abstract or ""
             )
 
-        # Embed the query
-        query_text = expand_query_for_embedding(query, context_title, context_abstract)
-        query_vector = self._embedder.embed_query(query_text)
+        # Embed the query — GeminiEmbedder handles its own formatting internally
+        if isinstance(self._embedder, Specter2Embedder):
+            query_text = expand_query_for_embedding(query, context_title, context_abstract)
+            query_vector = self._embedder.embed_query(query_text)
+        else:
+            query_vector = self._embedder.embed_query(query)
 
         # Blend query + context vectors
         if context_vector is not None:
@@ -293,27 +297,62 @@ class SearchEngine:
         seen: dict[str, Paper] = {}
         total_candidates = 0
 
-        for q in queries:
-            result = self.search(
-                query=q,
-                max_results=max_results,
-                categories=categories,
-                conference=conference,
-                year=year,
-                date_from=date_from,
-                date_to=date_to,
-                context_paper_id=context_paper_id,
-                context_title=context_title,
-                context_abstract=context_abstract,
-            )
-            total_candidates += result.total_candidates
+        # Pre-embed all queries in a single API call (critical for Gemini — avoids N round trips)
+        if isinstance(self._embedder, GeminiEmbedder):
+            texts = [f"task: search result | query: {q}" for q in queries]
+            query_vectors = self._embedder.embed_texts(texts)  # single batch call
+        else:
+            query_texts = [expand_query_for_embedding(q, context_title, context_abstract) for q in queries]
+            query_vectors = self._embedder.embed_texts(query_texts)
 
-            for paper in result.papers:
-                existing = seen.get(paper.arxiv_id)
-                if existing is None:
-                    seen[paper.arxiv_id] = paper
-                elif (paper.similarity_score or 0) > (existing.similarity_score or 0):
-                    seen[paper.arxiv_id] = paper
+        # Build shared context vector if needed
+        context_vector = None
+        if context_paper_id:
+            context_vector = self._store.get_paper_vector(context_paper_id)
+        if context_title and context_vector is None:
+            context_vector = self._embedder.embed_paper(context_title, context_abstract or "")
+
+        # Resolve conference/categories once
+        if conference and not categories:
+            categories = get_categories_for_conference(conference)
+
+        where_clause = self._store.build_where_clause(
+            categories=categories,
+            date_from=date_from,
+            date_to=date_to,
+            year=year,
+        )
+
+        fetch_limit = max_results * RERANK_OVERFETCH
+
+        def _search_one(q_and_vec):
+            q, qvec = q_and_vec
+            if context_vector is not None:
+                qvec = _blend_vectors(qvec, context_vector, alpha=0.4)
+            results = self._store.hybrid_search(
+                query=q,
+                query_vector=qvec,
+                limit=fetch_limit,
+                where=where_clause,
+            )
+            if context_paper_id:
+                results = [(p, s) for p, s in results if p.arxiv_id != context_paper_id]
+            return results
+
+        # Run all vector searches in parallel
+        with ThreadPoolExecutor(max_workers=len(queries)) as ex:
+            futures = {ex.submit(_search_one, (q, qv)): q for q, qv in zip(queries, query_vectors)}
+            for future in as_completed(futures):
+                candidates = future.result()
+                total_candidates += len(candidates)
+                for paper, score in candidates[:max_results]:
+                    existing = seen.get(paper.arxiv_id)
+                    if existing is None:
+                        paper.similarity_score = score
+                        seen[paper.arxiv_id] = paper
+                    elif score > (existing.similarity_score or 0):
+                        paper.similarity_score = score
+                        seen[paper.arxiv_id] = paper
 
         papers = sorted(seen.values(), key=lambda p: p.similarity_score or 0, reverse=True)
 
@@ -346,13 +385,14 @@ class SearchEngine:
         candidate_categories = [p.categories for p, _ in candidates]
 
         # Use cached vectors from search results (avoids 100s of individual DB lookups)
+        embed_dim = self._embedder.embedding_dim
         candidate_vectors = []
         for p, _ in candidates:
             vec = p._cached_vector
             if vec is not None:
                 candidate_vectors.append(vec)
             else:
-                candidate_vectors.append(np.zeros(768, dtype=np.float32))
+                candidate_vectors.append(np.zeros(embed_dim, dtype=np.float32))
         candidate_vectors = np.array(candidate_vectors)
 
         seed_ids = [seed_id] if seed_id and seed_id in set(candidate_ids) else None

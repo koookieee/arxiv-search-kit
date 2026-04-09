@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Sequence
 
-from arxiv_search_kit.index.embedder import Specter2Embedder
+from arxiv_search_kit.index.embedder import GeminiEmbedder, Specter2Embedder
 from arxiv_search_kit.index.store import IndexStore
 from arxiv_search_kit.models import Paper, SearchResult
 from arxiv_search_kit.search.engine import SearchEngine
@@ -16,44 +16,73 @@ logger = logging.getLogger(__name__)
 
 
 class ArxivClient:
-    """ArXiv paper search over a local SPECTER2 + LanceDB index.
+    """ArXiv paper search over a local LanceDB index.
+
+    Supports two embedding backends:
+    - ``"specter2"`` (default): local SPECTER2 model, no API key needed.
+    - ``"gemini"``: Gemini-2 embeddings via API, requires ``gemini_api_key`` or
+      ``GEMINI_API_KEY`` env var. Uses the Gemini-2 index (dim=3072).
 
     Usage::
 
         client = ArxivClient()
+        results = client.search("attention mechanism transformers")
+
+        # Use Gemini-2 embeddings:
+        client = ArxivClient(embedding="gemini", gemini_api_key="AIza...")
         results = client.search("attention mechanism transformers")
     """
 
     def __init__(
         self,
         index_dir: str | Path | None = None,
+        embedding: str = "specter2",
         device: str = "cpu",
         rerank: bool = True,
         embedding_batch_size: int = 32,
         cache_dir: str | Path | None = None,
         eager_load: bool = True,
+        gemini_api_key: str | None = None,
     ):
         """
         Args:
             index_dir: Path to LanceDB index. Auto-downloads from HF if None.
-            device: Torch device for SPECTER2 (``"cpu"`` or ``"cuda"``).
+            embedding: Embedding backend — ``"specter2"`` (default) or ``"gemini"``.
+            device: Torch device for SPECTER2 (``"cpu"`` or ``"cuda"``). Ignored for Gemini.
             rerank: Enable graph-based PageRank re-ranking.
-            embedding_batch_size: Batch size for SPECTER2 inference.
+            embedding_batch_size: Batch size for SPECTER2 inference. Ignored for Gemini.
             cache_dir: Where to cache the HF-downloaded index.
-            eager_load: Load SPECTER2 immediately (False if only using get_paper).
+            eager_load: Load embedder immediately (False = lazy load on first search).
+            gemini_api_key: Gemini API key (only for ``embedding="gemini"``).
+                Falls back to ``GEMINI_API_KEY`` env var.
         """
+        if embedding not in ("specter2", "gemini"):
+            raise ValueError(f"embedding must be 'specter2' or 'gemini', got '{embedding}'")
+
         if index_dir is None:
-            from arxiv_search_kit.hub import download_index
-            index_dir = download_index(cache_dir=cache_dir)
+            if embedding == "gemini":
+                from arxiv_search_kit.hub import download_gemini_index
+                index_dir = download_gemini_index(cache_dir=cache_dir)
+            else:
+                from arxiv_search_kit.hub import download_index
+                index_dir = download_index(cache_dir=cache_dir)
 
         self._store = IndexStore(index_dir)
-        self._embedder = Specter2Embedder(device=device, batch_size=embedding_batch_size)
+
+        if embedding == "gemini":
+            self._embedder = GeminiEmbedder(api_key=gemini_api_key)
+        else:
+            self._embedder = Specter2Embedder(device=device, batch_size=embedding_batch_size)
+
         self._engine = SearchEngine(store=self._store, embedder=self._embedder, rerank=rerank)
 
         if eager_load:
             self._embedder.warmup()
 
-        logger.info("ArxivClient ready: %s papers, device=%s", f"{self._store.num_papers:,}", device)
+        logger.info(
+            "ArxivClient ready: %s papers, embedding=%s",
+            f"{self._store.num_papers:,}", embedding,
+        )
 
     @property
     def num_papers(self) -> int:

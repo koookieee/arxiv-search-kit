@@ -1,8 +1,10 @@
 # arxiv-search-kit
 
-Offline ArXiv paper search over 928K CS papers. SPECTER2 embeddings + LanceDB vector index + BM25 hybrid retrieval.
+Offline ArXiv paper search over 928K CS papers. Two embedding backends, LanceDB vector index + BM25 hybrid retrieval.
 
-**40ms per search on GPU. 99% precision@10. No API keys required. No rate limits.**
+**SPECTER2**: 40ms per search on GPU. No API keys required. No rate limits.
+
+**Gemini-2**: Higher quality semantic search via `gemini-embedding-2-preview` (3072-dim). Requires a Gemini API key.
 
 ## Install
 
@@ -46,7 +48,12 @@ uv pip install arxiv-search-kit[gpu]
 ```python
 from arxiv_search_kit import ArxivClient
 
-client = ArxivClient()  # downloads index on first run
+# SPECTER2 (default) — local, no API key needed
+client = ArxivClient()
+
+# Gemini-2 — higher quality, requires Gemini API key
+client = ArxivClient(embedding="gemini", gemini_api_key="AIza...")
+# or set GEMINI_API_KEY env var and omit gemini_api_key
 
 results = client.search("attention mechanism transformers")
 for paper in results:
@@ -163,7 +170,7 @@ results = client.batch_search(
 
 ### Find Related Papers
 
-Find papers similar to a given paper using its stored SPECTER2 embedding. No keyword query needed.
+Find papers similar to a given paper using its stored embedding. No keyword query needed.
 
 ```python
 related = client.find_related("1706.03762", max_results=10)  # Attention Is All You Need
@@ -383,15 +390,37 @@ final_score = 0.6 * relevance + 0.4 * importance
 
 Conference-to-category mappings: CVPR, NeurIPS, ICML, ICLR, ACL, EMNLP, NAACL, AAAI, IJCAI, CHI, KDD, SIGIR, RSS, ICRA, and [many more](arxiv_search_kit/categories.py).
 
+## Embedding Backends
+
+### SPECTER2 (default)
+- Local transformer model ([allenai/specter2](https://huggingface.co/allenai/specter2)), 768-dim embeddings
+- No API key, no rate limits, ~40ms on GPU
+- Best with `context_title` + `context_abstract` for keyword queries
+- Index: [anonymousatom/arxiv-search-index](https://huggingface.co/datasets/anonymousatom/arxiv-search-index) (~4GB)
+
+### Gemini-2
+- `gemini-embedding-2-preview` via Google Gemini API, 3072-dim embeddings
+- Requires a Gemini API key (`gemini_api_key=` or `GEMINI_API_KEY` env var)
+- Better out-of-the-box quality for keyword queries — asymmetric retrieval format handles free-text queries natively
+- Index: [Vidushee/arxiv-gemini-index](https://huggingface.co/datasets/Vidushee/arxiv-gemini-index) (~10GB)
+
+```python
+# SPECTER2 — fast, local, no key needed
+client = ArxivClient()
+
+# Gemini-2 — higher quality semantic search
+client = ArxivClient(embedding="gemini", gemini_api_key="AIza...")
+```
+
 ## How It Works
 
-1. **Index**: 928K papers embedded with [SPECTER2](https://huggingface.co/allenai/specter2), stored in [LanceDB](https://lancedb.github.io/lancedb/) (~4GB)
-2. **Retrieval**: Hybrid search — dense (SPECTER2 cosine) + sparse (BM25) fused via Reciprocal Rank Fusion
+1. **Index**: 928K papers embedded with SPECTER2 or Gemini-2, stored in [LanceDB](https://lancedb.github.io/lancedb/)
+2. **Retrieval**: Hybrid search — dense (cosine) + sparse (BM25) fused via Reciprocal Rank Fusion
 3. **Re-ranking**: Personalized PageRank on a k-NN similarity graph built from candidate embeddings
 4. **Enrichment**: Optional citation/venue data from [Semantic Scholar API](https://api.semanticscholar.org/api-docs/graph)
 5. **Importance**: Blends relevance with citation count, venue prestige, and influential citation ratio
 
-The index auto-downloads from [HuggingFace](https://huggingface.co/datasets/anonymousatom/arxiv-search-index) on first use.
+Indexes auto-download from HuggingFace on first use.
 
 ## Building Your Own Index
 

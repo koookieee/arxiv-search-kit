@@ -133,3 +133,59 @@ def format_paper_text(title: str, abstract: str) -> str:
     title = title.strip()
     abstract = abstract.strip()
     return f"{title} [SEP] {abstract}" if abstract else title
+
+
+class GeminiEmbedder:
+    """Gemini embedding-2-preview embedder for query-time use.
+
+    Uses the standard (non-batch) Gemini API to embed queries and papers.
+    Requires a Gemini API key via ``api_key`` or ``GEMINI_API_KEY`` env var.
+    """
+
+    def __init__(self, api_key: str | None = None):
+        import os
+        self._api_key = api_key or os.environ.get("GEMINI_API_KEY")
+        if not self._api_key:
+            raise ValueError(
+                "Gemini API key required. Pass api_key= or set GEMINI_API_KEY env var."
+            )
+        self._client = None
+        self._lock = threading.Lock()
+
+    def _get_client(self):
+        if self._client is None:
+            with self._lock:
+                if self._client is None:
+                    from google import genai
+                    self._client = genai.Client(api_key=self._api_key)
+        return self._client
+
+    @property
+    def embedding_dim(self) -> int:
+        return 3072
+
+    def embed_texts(self, texts: list[str]) -> np.ndarray:
+        """Embed texts using Gemini API. Returns array of shape (len(texts), 3072)."""
+        client = self._get_client()
+        result = client.models.embed_content(
+            model="gemini-embedding-2-preview",
+            contents=texts,
+        )
+        return np.array([e.values for e in result.embeddings], dtype=np.float32)
+
+    def embed_query(self, query: str) -> np.ndarray:
+        """Embed a search query. Returns shape (3072,)."""
+        text = f"task: search result | query: {query}"
+        return self.embed_texts([text])[0]
+
+    def embed_paper(self, title: str, abstract: str) -> np.ndarray:
+        """Embed a paper by title+abstract. Returns shape (3072,)."""
+        title = (title or "").strip() or "none"
+        abstract = (abstract or "").strip()
+        if len(abstract) > 2000:
+            abstract = abstract[:2000]
+        text = f"title: {title} | text: {abstract}"
+        return self.embed_texts([text])[0]
+
+    def warmup(self) -> None:
+        self._get_client()

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 # HF repo where we host the pre-built index and metadata
 HF_REPO_ID = "anonymousatom/arxiv-search-index"
+HF_GEMINI_REPO_ID = "Vidushee/arxiv-gemini-index"
 HF_METADATA_REPO_ID = "anonymousatom/arxiv-metadata"
 
 # Default local cache directory
@@ -25,12 +26,54 @@ DEFAULT_CACHE_DIR = Path.home() / ".cache" / "arxiv_search_kit"
 
 # Files in the HF repo
 INDEX_DIR_NAME = "arxiv_index"
+GEMINI_INDEX_DIR_NAME = "arxiv_gemini_index"
 METADATA_FILENAME = "arxiv_metadata.jsonl"
 
 
 def get_default_index_dir() -> Path:
     """Get the default local path for the pre-built index."""
     return DEFAULT_CACHE_DIR / INDEX_DIR_NAME
+
+
+def download_gemini_index(
+    cache_dir: str | Path | None = None,
+    force: bool = False,
+) -> Path:
+    """Download the Gemini-2 embedding index from HuggingFace.
+
+    Args:
+        cache_dir: Local directory to store the index.
+        force: Re-download even if cached.
+
+    Returns:
+        Path to the local index directory.
+    """
+    from huggingface_hub import snapshot_download
+
+    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
+    index_dir = cache_dir / GEMINI_INDEX_DIR_NAME
+
+    if index_dir.exists() and not force:
+        if any(index_dir.iterdir()):
+            logger.info(f"Using cached Gemini index at {index_dir}")
+            return index_dir
+
+    logger.info(f"Downloading Gemini-2 index from HF: {HF_GEMINI_REPO_ID}")
+    logger.info("This is a one-time download (~10 GB). Subsequent loads will be instant.")
+
+    try:
+        downloaded_path = snapshot_download(
+            repo_id=HF_GEMINI_REPO_ID,
+            repo_type="dataset",
+            local_dir=str(index_dir),
+        )
+        logger.info(f"Gemini index downloaded to {downloaded_path}")
+        return Path(downloaded_path)
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to download Gemini index from HF ({HF_GEMINI_REPO_ID}). "
+            f"Error: {e}"
+        ) from e
 
 
 def download_index(
