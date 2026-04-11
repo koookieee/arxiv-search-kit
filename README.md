@@ -284,71 +284,47 @@ paths = client.download_papers(results.papers, output_dir="./sources", format="s
 
 Downloads are streamed to disk (no full file in memory). Failed downloads are skipped with a warning.
 
-## Paper Summarization
+## Paper Q&A
 
-Summarize any paper using Google Gemini — downloads the LaTeX source from ArXiv, extracts the primary `.tex` file, trims after the conclusion, and produces a comprehensive LLM-generated summary covering contributions, methodology, results, ablations, and more.
+Query any paper with natural language — summarization, specific questions, anything. Downloads the LaTeX source from ArXiv, converts it to clean Markdown via pandoc (preserving equations and tables as raw LaTeX blocks), then passes your query + the paper content to Gemini.
 
 ```bash
 pip install arxiv-search-kit[summarize]
+# also requires pandoc: apt install pandoc
 ```
 
 ```python
-# by ArXiv ID
-summary = client.summarize_paper("1706.03762", api_key="your-gemini-key")
+# summarize
+response = client.query_paper("1706.03762", "summarize this paper")
 
-# from search results
+# ask a specific question
+response = client.query_paper("1706.03762", "What is the scaling factor in the attention mechanism and why is it used?")
+
+# any natural language — the LLM handles intent
+response = client.query_paper("1706.03762", "give me a tldr")
+response = client.query_paper("1706.03762", "what datasets were used and how did they split them?")
+response = client.query_paper("1706.03762", "explain the loss function")
+
+# from a Paper object
 results = client.search("vision transformers", max_results=1)
-summary = client.summarize_paper(results[0], api_key="your-gemini-key")
+response = client.query_paper(results[0], "what are the key contributions?")
 
-# or set the env var instead of passing api_key every time
+# set env var to avoid passing api_key every time
 # export GEMINI_API_KEY=your-gemini-key
-summary = client.summarize_paper("1706.03762")
+response = client.query_paper("1706.03762", "summarize")
 ```
 
-The summary covers: title & authors, problem statement, key contributions, related work, methodology (with equations), experimental setup, all benchmark results, ablation studies, limitations, and conclusion.
+### Batch — parallel across multiple papers
 
-### Batch summarization
-
-Pass a list to summarize multiple papers in parallel:
+Pass a list to query multiple papers in parallel. Returns a dict mapping ArXiv ID to response.
 
 ```python
 results = client.search("vision transformers", max_results=5)
-summaries = client.summarize_paper(results.papers, api_key="your-gemini-key")
-# returns {"2401.12345": "summary...", "2312.67890": "summary...", ...}
+responses = client.query_paper(results.papers, "summarize this paper")
+# {"2401.12345": "...", "2312.67890": "...", ...}
 
 # control parallelism (default: 5 concurrent)
-summaries = client.summarize_paper(results.papers, max_concurrent=3)
-```
-
-You can also specify a different Gemini model:
-
-```python
-summary = client.summarize_paper("1706.03762", model="gemini-3-flash-preview")
-```
-
-## Paper Q&A
-
-Ask any question about a paper and get an answer grounded in the paper's content. Uses the same LaTeX source pipeline as summarization.
-
-```python
-# by ArXiv ID
-answer = client.ask_paper("1706.03762", "What is the scaling factor in the attention mechanism and why is it used?")
-
-# from search results
-results = client.search("vision transformers", max_results=1)
-answer = client.ask_paper(results[0], "What datasets were used for evaluation?")
-
-# or set the env var instead of passing api_key every time
-# export GEMINI_API_KEY=your-gemini-key
-answer = client.ask_paper("1706.03762", "What are the key contributions of this paper?")
-```
-
-The answer is strictly grounded in the paper — Gemini cites specific sections, equations, and tables from the source. If the paper doesn't contain enough information to answer, it says so clearly.
-
-Requires the same `[summarize]` extra:
-
-```bash
-pip install arxiv-search-kit[summarize]
+responses = client.query_paper(results.papers, "what datasets were used?", max_concurrent=3)
 ```
 
 ## Async Support
@@ -360,8 +336,8 @@ results = await client.async_search("transformers", max_results=10)
 results = await client.async_batch_search(queries=[...], sort_by="importance")
 related = await client.async_find_related("1706.03762")
 await client.async_enrich(results)
-summary = await client.async_summarize_paper("1706.03762")
-answer  = await client.async_ask_paper("1706.03762", "What optimizer was used?")
+response = await client.async_query_paper("1706.03762", "summarize this paper")
+response = await client.async_query_paper(results.papers, "what optimizer was used?")
 ```
 
 ## Venue Prestige Tiers
@@ -401,15 +377,27 @@ Conference-to-category mappings: CVPR, NeurIPS, ICML, ICLR, ACL, EMNLP, NAACL, A
 ### Gemini-2
 - `gemini-embedding-2-preview` via Google Gemini API, 3072-dim embeddings
 - Requires a Gemini API key (`gemini_api_key=` or `GEMINI_API_KEY` env var)
+- Works with just a query string — no title or abstract needed
 - Better out-of-the-box quality for keyword queries — asymmetric retrieval format handles free-text queries natively
+- `batch_search` pre-embeds all queries in a single API call (not N separate calls)
 - Index: [Vidushee/arxiv-gemini-index](https://huggingface.co/datasets/Vidushee/arxiv-gemini-index) (~10GB)
 
 ```python
 # SPECTER2 — fast, local, no key needed
 client = ArxivClient()
+results = client.search("attention mechanism transformers")  # works fine
 
-# Gemini-2 — higher quality semantic search
+# SPECTER2 benefits from context when you have it
+results = client.search(
+    "attention mechanism transformers",
+    context_title="My Paper Title",
+    context_abstract="We propose...",
+)
+
+# Gemini-2 — higher quality, just a query is enough
 client = ArxivClient(embedding="gemini", gemini_api_key="AIza...")
+results = client.search("attention mechanism transformers")
+results = client.batch_search(["BERT", "GPT", "RLHF"])  # single API call for all queries
 ```
 
 ## How It Works

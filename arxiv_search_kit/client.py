@@ -289,35 +289,38 @@ class ArxivClient:
         return download_papers(papers, output_dir=output_dir, format=format)
 
     # ------------------------------------------------------------------
-    # Summarization
+    # Paper querying (summarization + QA)
     # ------------------------------------------------------------------
 
-    def summarize_paper(
+    def query_paper(
         self,
         paper: Paper | str | list[Paper] | list[str],
+        query: str,
         api_key: str | None = None,
         model: str = "gemini-3-flash-preview",
         max_concurrent: int = 5,
     ) -> str | dict[str, str]:
-        """Download paper(s) LaTeX source and summarize using Google Gemini.
+        """Query one or more papers with any natural language input.
 
-        Downloads the source from ArXiv, extracts the primary .tex file,
-        trims content after the conclusion, and sends it to Gemini for
-        a comprehensive summary covering contributions, methodology,
-        results, and more.
+        Accepts a single paper or a list. For lists, papers are queried in parallel.
+        Downloads each paper's LaTeX source, converts it to clean Markdown, and passes
+        the query + content to Gemini. Works for any intent — summarization, specific
+        questions, comparisons, etc.
 
         Args:
             paper: Paper object, ArXiv ID string, or a list of either.
+            query: Any natural language query — e.g. "summarize this paper",
+                   "what datasets were used?", "explain the loss function".
             api_key: Google AI API key. Falls back to ``GEMINI_API_KEY`` env var.
             model: Gemini model to use.
-            max_concurrent: Max parallel requests (only for multiple papers).
+            max_concurrent: Max parallel requests when given a list of papers.
 
         Returns:
-            A summary string for a single paper, or a dict mapping
-            ArXiv ID to summary string for multiple papers.
+            Response string for a single paper, or a dict mapping ArXiv ID to
+            response string for multiple papers.
         """
-        from arxiv_search_kit.summarizer import summarize_paper
-        return summarize_paper(paper, api_key=api_key, model=model, max_concurrent=max_concurrent)
+        from arxiv_search_kit.paper_query import query_paper
+        return query_paper(paper, query, api_key=api_key, model=model, max_concurrent=max_concurrent)
 
     # ------------------------------------------------------------------
     # Async variants
@@ -346,50 +349,16 @@ class ArxivClient:
             list(papers) if not isinstance(papers, list) else papers, fields=fields,
         )
 
-    async def async_summarize_paper(
+    async def async_query_paper(
         self,
         paper: Paper | str | list[Paper] | list[str],
+        query: str,
         api_key: str | None = None,
         model: str = "gemini-3-flash-preview",
         max_concurrent: int = 5,
     ) -> str | dict[str, str]:
-        """Async variant of :meth:`summarize_paper`."""
-        from arxiv_search_kit.summarizer import async_summarize_paper
-        return await async_summarize_paper(
-            paper, api_key=api_key, model=model, max_concurrent=max_concurrent,
+        """Async variant of :meth:`query_paper`."""
+        from arxiv_search_kit.paper_query import async_query_paper
+        return await async_query_paper(
+            paper, query, api_key=api_key, model=model, max_concurrent=max_concurrent,
         )
-
-    def ask_paper(
-        self,
-        paper: Paper | str,
-        question: str,
-        api_key: str | None = None,
-        model: str = "gemini-3-flash-preview",
-    ) -> str:
-        """Answer a question about a paper using its LaTeX source and Google Gemini.
-
-        Downloads the LaTeX source from ArXiv, extracts the primary .tex file,
-        and asks Gemini to answer the question grounded in the paper's content.
-
-        Args:
-            paper: Paper object or ArXiv ID string.
-            question: The question to answer about the paper.
-            api_key: Google AI API key. Falls back to ``GEMINI_API_KEY`` env var.
-            model: Gemini model to use.
-
-        Returns:
-            Answer string grounded in the paper's content.
-        """
-        from arxiv_search_kit.summarizer import ask_paper
-        return ask_paper(paper, question, api_key=api_key, model=model)
-
-    async def async_ask_paper(
-        self,
-        paper: Paper | str,
-        question: str,
-        api_key: str | None = None,
-        model: str = "gemini-3-flash-preview",
-    ) -> str:
-        """Async variant of :meth:`ask_paper`."""
-        from arxiv_search_kit.summarizer import async_ask_paper
-        return await async_ask_paper(paper, question, api_key=api_key, model=model)
