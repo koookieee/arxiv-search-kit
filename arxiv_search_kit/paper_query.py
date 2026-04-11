@@ -224,27 +224,47 @@ def _find_primary_tex(archive_bytes: bytes) -> str:
     # Try as tar.gz
     try:
         with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as tar:
-            tex_files: list[tuple[str, str]] = []
+            tex_files: dict[str, str] = {}
             for member in tar.getmembers():
                 if member.isfile() and member.name.endswith(".tex"):
                     f = tar.extractfile(member)
                     if f is not None:
                         content = f.read().decode("utf-8", errors="replace")
-                        tex_files.append((member.name, content))
+                        # store by basename and full name for lookup
+                        tex_files[member.name] = content
+                        tex_files[Path(member.name).name] = content
+                        tex_files[Path(member.name).stem] = content
 
             if not tex_files:
                 raise SummarizationError("No .tex files found in source archive")
 
             # Find the primary file (the one with \documentclass)
-            for name, content in tex_files:
+            primary = None
+            for name, content in tex_files.items():
                 if r"\documentclass" in content:
+                    primary = content
                     logger.info("Primary tex file: %s", name)
-                    return content
+                    break
 
-            # Fallback: largest .tex file
-            tex_files.sort(key=lambda x: len(x[1]), reverse=True)
-            logger.info("No \\documentclass found, using largest: %s", tex_files[0][0])
-            return tex_files[0][1]
+            if primary is None:
+                # Fallback: largest .tex file
+                by_size = sorted(tex_files.items(), key=lambda x: len(x[1]), reverse=True)
+                primary = by_size[0][1]
+                logger.info("No \\documentclass found, using largest tex file")
+
+            # Inline \input{} and \include{} from the archive
+            def inline_inputs(tex: str, depth: int = 0) -> str:
+                if depth > 5:
+                    return tex
+                def replacer(m: re.Match) -> str:
+                    fname = m.group(1).strip()
+                    for key in (fname, fname + ".tex", Path(fname).name, Path(fname).stem):
+                        if key in tex_files:
+                            return inline_inputs(tex_files[key], depth + 1)
+                    return m.group(0)  # leave as-is if not found
+                return re.sub(r'\\(?:input|include)\{([^}]+)\}', replacer, tex)
+
+            return inline_inputs(primary)
     except tarfile.TarError:
         pass
 
