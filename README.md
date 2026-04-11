@@ -63,7 +63,7 @@ for paper in results:
 ## Default vs Extra Fields
 
 By default, search results include only the essential fields:
-**arxiv_id, title, abstract, year, citation_count** (citation_count populated only when using `sort_by="importance"` or `sort_by="citations"`).
+**arxiv_id, title, abstract, citation_count** (citation_count populated only when using `sort_by="importance"` or `sort_by="citations"`).
 
 Pass `details="extra"` to get all fields.
 
@@ -71,7 +71,7 @@ Pass `details="extra"` to get all fields.
 # default — only core fields
 results = client.search("transformers")
 results.to_dicts()
-# [{"arxiv_id": "...", "title": "...", "abstract": "...", "year": 2024, "citation_count": None}, ...]
+# [{"arxiv_id": "...", "title": "...", "abstract": "...", "citation_count": None}, ...]
 
 # extra — all fields (authors, categories, doi, venue, tldr, etc.)
 results = client.search("transformers", details="extra")

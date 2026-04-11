@@ -116,7 +116,7 @@ def _restore_stash(md: str, stash: dict) -> str:
     return _PLACEHOLDER_PAT.sub(replacer, md)
 
 
-def _run_pandoc(tex_source: str) -> str:
+def _run_pandoc(tex_source: str, timeout: float = 30) -> str:
     with tempfile.NamedTemporaryFile(suffix=".tex", mode="w",
                                      encoding="utf-8", delete=False) as f:
         f.write(tex_source)
@@ -127,6 +127,7 @@ def _run_pandoc(tex_source: str) -> str:
              "--wrap=none", "--markdown-headings=atx"],
             capture_output=True,
             text=True,
+            timeout=timeout,
         )
         if result.returncode != 0 and not result.stdout:
             raise RuntimeError(f"pandoc error: {result.stderr}")
@@ -184,19 +185,24 @@ def _tex_to_markdown(tex: str) -> str:
 
     Stashes math/table environments as placeholders before conversion so they
     are preserved verbatim, then restores them as fenced ```latex blocks.
-    Falls back to the raw (cleaned) tex string if pandoc is not available.
+    Falls back to the raw (cleaned) tex string if pandoc is not available
+    or if pandoc fails for any reason (malformed LaTeX, OOM, etc.).
     """
     if not _pandoc_available():
         logger.warning("pandoc not found — passing raw LaTeX to LLM. "
                        "Install pandoc for cleaner results: apt install pandoc")
         return tex
 
-    modified_tex, stash = _extract_and_stash(tex)
-    raw_md = _run_pandoc(modified_tex)
-    md = _postprocess_md(raw_md)
-    md = _restore_stash(md, stash)
-    md = re.sub(r'\n{4,}', '\n\n\n', md)
-    return md.strip()
+    try:
+        modified_tex, stash = _extract_and_stash(tex)
+        raw_md = _run_pandoc(modified_tex)
+        md = _postprocess_md(raw_md)
+        md = _restore_stash(md, stash)
+        md = re.sub(r'\n{4,}', '\n\n\n', md)
+        return md.strip()
+    except Exception as e:
+        logger.warning("pandoc conversion failed, falling back to raw LaTeX: %s", e)
+        return tex
 
 
 ARXIV_SOURCE_URL = "https://arxiv.org/e-print/{arxiv_id}"
@@ -299,13 +305,11 @@ def _trim_after_conclusion(tex: str) -> str:
             conclusion_start = match.start()
             break
 
-    end_tag = "\n\\end{document}"
-
     if conclusion_start == -1:
         # No conclusion found — return full content (minus bibliography)
         bib_match = re.search(r"\\bibliography\{|\\begin\{thebibliography\}", tex)
         if bib_match:
-            return tex[:bib_match.start()].rstrip() + end_tag
+            return tex[:bib_match.start()].rstrip()
         return tex
 
     # Find the next \section or \appendix or \bibliography after conclusion
@@ -317,17 +321,27 @@ def _trim_after_conclusion(tex: str) -> str:
 
     if next_section:
         end_pos = conclusion_start + 1 + next_section.start()
-        return tex[:end_pos].rstrip() + end_tag
+        return tex[:end_pos].rstrip()
 
     return tex
 
 
 def _clean_tex(tex: str) -> str:
     """Light cleaning of LaTeX source to reduce token usage while preserving content."""
+    # Strip preamble — keep only \begin{document}...\end{document} body
+    begin_match = re.search(r"\\begin\{document\}", tex)
+    if begin_match:
+        tex = tex[begin_match.end():]
+    end_match = re.search(r"\\end\{document\}", tex)
+    if end_match:
+        tex = tex[:end_match.start()]
     # Remove comments (lines starting with %)
     tex = re.sub(r"(?m)^%.*$", "", tex)
     # Remove inline comments (but not escaped \%)
     tex = re.sub(r"(?<!\\)%.*$", "", tex, flags=re.MULTILINE)
+    # Strip preamble commands that pandoc can't handle (parametrized macros with #1)
+    tex = re.sub(r"\\newcolumntype\{[^}]+\}.*", "", tex)
+    tex = re.sub(r"\\(?:newcommand|renewcommand|def)\\[a-zA-Z]+.*?#\d.*", "", tex)
     # Collapse multiple blank lines
     tex = re.sub(r"\n{3,}", "\n\n", tex)
     return tex.strip()

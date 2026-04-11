@@ -130,7 +130,6 @@ def _strip_paper(paper: "Paper") -> dict:
         "arxiv_id": paper.arxiv_id,
         "title": paper.title,
         "abstract": paper.abstract,
-        "year": paper.year,
         "citation_count": paper.citation_count,
     }
 
@@ -157,7 +156,7 @@ class SearchResult:
     def to_dicts(self) -> list[dict]:
         """Serialize papers according to the details level.
 
-        ``details="default"`` → arxiv_id, title, abstract, year, citation_count.
+        ``details="default"`` → arxiv_id, title, abstract, citation_count.
         ``details="extra"``   → all Paper fields.
         """
         if self.details == "extra":
