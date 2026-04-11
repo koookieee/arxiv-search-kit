@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arxiv-search-kit"
-version = "0.2.0"
+version = "0.2.1"
 description = "High Quality and Blazing Fast ArXiv paper search — 928K papers, SPECTER2 or Gemini-2 embeddings"
 readme = "README.md"
 license = "MIT"

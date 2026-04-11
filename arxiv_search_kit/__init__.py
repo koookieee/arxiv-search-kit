@@ -26,7 +26,7 @@ from arxiv_search_kit.exceptions import (
     PaperNotFoundError,
 )
 
-__version__ = "0.1.1"
+__version__ = "0.2.1"
 
 
 def __getattr__(name: str):
