@@ -299,25 +299,25 @@ def _trim_after_conclusion(tex: str) -> str:
             conclusion_start = match.start()
             break
 
+    end_tag = "\n\\end{document}"
+
     if conclusion_start == -1:
         # No conclusion found — return full content (minus bibliography)
         bib_match = re.search(r"\\bibliography\{|\\begin\{thebibliography\}", tex)
         if bib_match:
-            return tex[:bib_match.start()].rstrip()
+            return tex[:bib_match.start()].rstrip() + end_tag
         return tex
 
     # Find the next \section or \appendix or \bibliography after conclusion
     after_conclusion = tex[conclusion_start:]
-    # Match the next section-level command after the conclusion section header
     next_section = re.search(
         r"\n\\(?:section|appendix|bibliography|begin\{thebibliography\}|end\{document\})",
         after_conclusion[1:],  # skip the conclusion \section itself
     )
 
     if next_section:
-        # Keep up to the end of the conclusion section
         end_pos = conclusion_start + 1 + next_section.start()
-        return tex[:end_pos].rstrip()
+        return tex[:end_pos].rstrip() + end_tag
 
     return tex
 
