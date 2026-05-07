@@ -7,9 +7,6 @@ import threading
 from typing import Generator
 
 import numpy as np
-import torch
-from adapters import AutoAdapterModel
-from transformers import AutoTokenizer
 
 from arxiv_search_kit.exceptions import EmbeddingError
 
@@ -28,11 +25,13 @@ class Specter2Embedder:
         batch_size: int = 64,
         max_length: int = 512,
     ):
+        import torch
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = torch.device(device)
         self.batch_size = batch_size
         self.max_length = max_length
+        self._torch = torch
 
         self._tokenizer = None
         self._model = None
@@ -49,6 +48,9 @@ class Specter2Embedder:
         with self._lock:
             if self._model is not None:
                 return
+            import torch
+            from adapters import AutoAdapterModel
+            from transformers import AutoTokenizer
             logger.info("Loading SPECTER2 on %s", self.device)
             self._tokenizer = AutoTokenizer.from_pretrained(SPECTER2_BASE)
             model = AutoAdapterModel.from_pretrained(SPECTER2_BASE)
@@ -64,7 +66,7 @@ class Specter2Embedder:
         dummy = self._tokenizer(
             ["warmup"], padding=True, truncation=True, max_length=16, return_tensors="pt"
         ).to(self.device)
-        with torch.no_grad():
+        with self._torch.no_grad():
             self._model(**dummy)
 
     @property
@@ -83,7 +85,7 @@ class Specter2Embedder:
                     batch, padding=True, truncation=True,
                     max_length=self.max_length, return_tensors="pt",
                 ).to(self.device)
-                with torch.no_grad():
+                with self._torch.no_grad():
                     outputs = self._model(**inputs)
                 all_embeddings.append(outputs.last_hidden_state[:, 0, :].cpu().numpy())
             except Exception as e:
